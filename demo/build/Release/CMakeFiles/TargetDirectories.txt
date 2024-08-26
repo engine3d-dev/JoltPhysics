@@ -1,3 +1,0 @@
-C:/Users/heraa/OneDrive/Desktop/JoltPhysics/demo/build/Release/CMakeFiles/Testbed.dir
-C:/Users/heraa/OneDrive/Desktop/JoltPhysics/demo/build/Release/CMakeFiles/edit_cache.dir
-C:/Users/heraa/OneDrive/Desktop/JoltPhysics/demo/build/Release/CMakeFiles/rebuild_cache.dir
