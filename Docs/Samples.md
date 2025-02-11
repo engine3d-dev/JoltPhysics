@@ -1,6 +1,6 @@
 # Jolt Physics Samples
 
-This document describes the demos in the Samples application (currently compiles only under Windows). When you run the samples application the application will initially start paused, press P to unpause it. The menu is accessible through pressing ESC, it has the following options:
+This document describes the demos in the Samples application. When you run the samples application the application will initially start paused, press P to unpause it. The menu is accessible through pressing ESC, it has the following options:
 
 * Select Test - This allows you to select between the different types of physics tests
 * Test Settings - Some tests will allow extra configuration, if not this setting will be greyed out
@@ -137,7 +137,7 @@ This category shows the various constraints that are supported. Constraints conn
 
 ### General
 
-This category contains general simulation tests. It demonstrates things like friction, restitution, damping, modifying gravity and continous collision detection. Some highlights:
+This category contains general simulation tests. It demonstrates things like friction, restitution, damping, modifying gravity and continuous collision detection. Some highlights:
 
 |[![Stable Box Stacking](https://img.youtube.com/vi/fTtjBLYBxco/hqdefault.jpg)](https://www.youtube.com/watch?v=fTtjBLYBxco)|
 |:-|

@@ -32,12 +32,16 @@
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/TaperedCapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
+#include <Jolt/Physics/Collision/Shape/TaperedCylinderShape.h>
 #include <Jolt/Physics/Collision/Shape/TriangleShape.h>
+#include <Jolt/Physics/Collision/Shape/PlaneShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/MutableCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/ScaledShape.h>
+#include <Jolt/Physics/Collision/Shape/EmptyShape.h>
 #include <Jolt/Physics/Collision/NarrowPhaseStats.h>
+#include <Jolt/Physics/Collision/CollideSoftBodyVertexIterator.h>
 #include <Jolt/Physics/Constraints/DistanceConstraint.h>
 #include <Jolt/Physics/Constraints/PulleyConstraint.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
@@ -50,6 +54,8 @@
 JPH_SUPPRESS_WARNINGS_STD_BEGIN
 #include <fstream>
 JPH_SUPPRESS_WARNINGS_STD_END
+
+JPH_GCC_SUPPRESS_WARNING("-Wswitch")
 
 //-----------------------------------------------------------------------------
 // RTTI definitions
@@ -99,10 +105,12 @@ JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ContactListenerTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ModifyMassTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ActivateDuringUpdateTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, SensorTest)
+JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, SimCollideBodyVsBodyTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, DynamicMeshTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, TwoDFunnelTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, AllowedDOFsTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ShapeFilterTest)
+JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, SimShapeFilterTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, GyroscopicForceTest)
 #ifdef JPH_OBJECT_STREAM
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, LoadSaveSceneTest)
@@ -145,9 +153,11 @@ static TestNameAndRTTI sGeneralTests[] =
 	{ "Modify Mass",						JPH_RTTI(ModifyMassTest) },
 	{ "Activate During Update",				JPH_RTTI(ActivateDuringUpdateTest) },
 	{ "Sensor",								JPH_RTTI(SensorTest) },
+	{ "Override Body Vs Body Collision",	JPH_RTTI(SimCollideBodyVsBodyTest) },
 	{ "Dynamic Mesh",						JPH_RTTI(DynamicMeshTest) },
 	{ "Allowed Degrees of Freedom",			JPH_RTTI(AllowedDOFsTest) },
-	{ "Shape Filter",						JPH_RTTI(ShapeFilterTest) },
+	{ "Shape Filter (Collision Detection)",	JPH_RTTI(ShapeFilterTest) },
+	{ "Shape Filter (Simulation)",			JPH_RTTI(SimShapeFilterTest) },
 	{ "Gyroscopic Force",					JPH_RTTI(GyroscopicForceTest) },
 };
 
@@ -201,15 +211,19 @@ JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, SphereShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, TaperedCapsuleShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, CapsuleShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, CylinderShapeTest)
+JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, TaperedCylinderShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, StaticCompoundShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, MutableCompoundShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, TriangleShapeTest)
+JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, PlaneShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ConvexHullShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, MeshShapeTest)
+JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, MeshShapeUserDataTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, HeightFieldShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, DeformedHeightFieldShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, RotatedTranslatedShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, OffsetCenterOfMassShapeTest)
+JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, EmptyShapeTest)
 
 static TestNameAndRTTI sShapeTests[] =
 {
@@ -218,15 +232,19 @@ static TestNameAndRTTI sShapeTests[] =
 	{ "Capsule Shape",						JPH_RTTI(CapsuleShapeTest) },
 	{ "Tapered Capsule Shape",				JPH_RTTI(TaperedCapsuleShapeTest) },
 	{ "Cylinder Shape",						JPH_RTTI(CylinderShapeTest) },
+	{ "Tapered Cylinder Shape",				JPH_RTTI(TaperedCylinderShapeTest) },
 	{ "Convex Hull Shape",					JPH_RTTI(ConvexHullShapeTest) },
 	{ "Mesh Shape",							JPH_RTTI(MeshShapeTest) },
+	{ "Mesh Shape Per Triangle User Data",	JPH_RTTI(MeshShapeUserDataTest) },
 	{ "Height Field Shape",					JPH_RTTI(HeightFieldShapeTest) },
 	{ "Deformed Height Field Shape",		JPH_RTTI(DeformedHeightFieldShapeTest) },
 	{ "Static Compound Shape",				JPH_RTTI(StaticCompoundShapeTest) },
 	{ "Mutable Compound Shape",				JPH_RTTI(MutableCompoundShapeTest) },
 	{ "Triangle Shape",						JPH_RTTI(TriangleShapeTest) },
+	{ "Plane Shape",						JPH_RTTI(PlaneShapeTest) },
 	{ "Rotated Translated Shape",			JPH_RTTI(RotatedTranslatedShapeTest) },
-	{ "Offset Center Of Mass Shape",		JPH_RTTI(OffsetCenterOfMassShapeTest) }
+	{ "Offset Center Of Mass Shape",		JPH_RTTI(OffsetCenterOfMassShapeTest) },
+	{ "Empty Shape",						JPH_RTTI(EmptyShapeTest) }
 };
 
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledSphereShapeTest)
@@ -234,12 +252,14 @@ JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledBoxShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledCapsuleShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledTaperedCapsuleShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledCylinderShapeTest)
+JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledTaperedCylinderShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledConvexHullShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledMeshShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledHeightFieldShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledStaticCompoundShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledMutableCompoundShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledTriangleShapeTest)
+JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledPlaneShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, ScaledOffsetCenterOfMassShapeTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, DynamicScaledShape)
 
@@ -250,12 +270,14 @@ static TestNameAndRTTI sScaledShapeTests[] =
 	{ "Capsule Shape",						JPH_RTTI(ScaledCapsuleShapeTest) },
 	{ "Tapered Capsule Shape",				JPH_RTTI(ScaledTaperedCapsuleShapeTest) },
 	{ "Cylinder Shape",						JPH_RTTI(ScaledCylinderShapeTest) },
+	{ "Tapered Cylinder Shape",				JPH_RTTI(ScaledTaperedCylinderShapeTest) },
 	{ "Convex Hull Shape",					JPH_RTTI(ScaledConvexHullShapeTest) },
 	{ "Mesh Shape",							JPH_RTTI(ScaledMeshShapeTest) },
 	{ "Height Field Shape",					JPH_RTTI(ScaledHeightFieldShapeTest) },
 	{ "Static Compound Shape",				JPH_RTTI(ScaledStaticCompoundShapeTest) },
 	{ "Mutable Compound Shape",				JPH_RTTI(ScaledMutableCompoundShapeTest) },
 	{ "Triangle Shape",						JPH_RTTI(ScaledTriangleShapeTest) },
+	{ "Plane Shape",						JPH_RTTI(ScaledPlaneShapeTest) },
 	{ "Offset Center Of Mass Shape",		JPH_RTTI(ScaledOffsetCenterOfMassShapeTest) },
 	{ "Dynamic Scaled Shape",				JPH_RTTI(DynamicScaledShape) }
 };
@@ -340,6 +362,7 @@ JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, SoftBodyCustomUpdateTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, SoftBodyLRAConstraintTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, SoftBodyBendConstraintTest)
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, SoftBodySkinnedConstraintTest)
+JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, SoftBodySensorTest)
 
 static TestNameAndRTTI sSoftBodyTests[] =
 {
@@ -358,7 +381,8 @@ static TestNameAndRTTI sSoftBodyTests[] =
 	{ "Soft Body Custom Update",		JPH_RTTI(SoftBodyCustomUpdateTest) },
 	{ "Soft Body LRA Constraint",		JPH_RTTI(SoftBodyLRAConstraintTest) },
 	{ "Soft Body Bend Constraint",		JPH_RTTI(SoftBodyBendConstraintTest) },
-	{ "Soft Body Skinned Constraint",	JPH_RTTI(SoftBodySkinnedConstraintTest) }
+	{ "Soft Body Skinned Constraint",	JPH_RTTI(SoftBodySkinnedConstraintTest) },
+	{ "Soft Body vs Sensor",			JPH_RTTI(SoftBodySensorTest) }
 };
 
 JPH_DECLARE_RTTI_FOR_FACTORY(JPH_NO_EXPORT, BroadPhaseCastRayTest)
@@ -420,7 +444,8 @@ static constexpr uint cNumBodyMutexes = 0; // Autodetect
 static constexpr uint cMaxBodyPairs = 65536;
 static constexpr uint cMaxContactConstraints = 20480;
 
-SamplesApp::SamplesApp()
+SamplesApp::SamplesApp(const String &inCommandLine) :
+	Application("Jolt Physics Samples", inCommandLine)
 {
 	// Limit the render frequency to our simulation frequency so we don't play back the simulation too fast
 	// Note that if the simulation frequency > vsync frequency the simulation will slow down as we want
@@ -486,7 +511,7 @@ SamplesApp::SamplesApp()
 			mDebugUI->CreateSlider(phys_settings, "Min Velocity For Restitution (m/s)", mPhysicsSettings.mMinVelocityForRestitution, 0.0f, 10.0f, 0.1f, [this](float inValue) { mPhysicsSettings.mMinVelocityForRestitution = inValue; mPhysicsSystem->SetPhysicsSettings(mPhysicsSettings); });
 			mDebugUI->CreateSlider(phys_settings, "Time Before Sleep (s)", mPhysicsSettings.mTimeBeforeSleep, 0.1f, 1.0f, 0.1f, [this](float inValue) { mPhysicsSettings.mTimeBeforeSleep = inValue; mPhysicsSystem->SetPhysicsSettings(mPhysicsSettings); });
 			mDebugUI->CreateSlider(phys_settings, "Point Velocity Sleep Threshold (m/s)", mPhysicsSettings.mPointVelocitySleepThreshold, 0.01f, 1.0f, 0.01f, [this](float inValue) { mPhysicsSettings.mPointVelocitySleepThreshold = inValue; mPhysicsSystem->SetPhysicsSettings(mPhysicsSettings); });
-		#if defined(_DEBUG) && !defined(JPH_DISABLE_CUSTOM_ALLOCATOR) && !defined(JPH_COMPILER_MINGW)
+		#ifdef JPH_CUSTOM_MEMORY_HOOK_ENABLED
 			mDebugUI->CreateCheckBox(phys_settings, "Enable Checking Memory Hook", IsCustomMemoryHookEnabled(), [](UICheckBox::EState inState) { EnableCustomMemoryHook(inState == UICheckBox::STATE_CHECKED); });
 		#endif
 			mDebugUI->CreateCheckBox(phys_settings, "Deterministic Simulation", mPhysicsSettings.mDeterministicSimulation, [this](UICheckBox::EState inState) { mPhysicsSettings.mDeterministicSimulation = inState == UICheckBox::STATE_CHECKED; mPhysicsSystem->SetPhysicsSettings(mPhysicsSettings); });
@@ -551,13 +576,14 @@ SamplesApp::SamplesApp()
 	#endif // JPH_DEBUG_RENDERER
 		mDebugUI->CreateTextButton(main_menu, "Mouse Probe", [this]() {
 			UIElement *probe_options = mDebugUI->CreateMenu();
-			mDebugUI->CreateComboBox(probe_options, "Mode", { "Pick", "Ray", "RayCollector", "CollidePoint", "CollideShape", "CastShape", "CollideSoftBody", "TransfShape", "GetTriangles", "BP Ray", "BP Box", "BP Sphere", "BP Point", "BP OBox", "BP Cast Box" }, (int)mProbeMode, [this](int inItem) { mProbeMode = (EProbeMode)inItem; });
+			mDebugUI->CreateComboBox(probe_options, "Mode", { "Pick", "Ray", "RayCollector", "CollidePoint", "CollideShape", "CollideShapeEdgRem", "CastShape", "CollideSoftBody", "TransfShape", "GetTriangles", "BP Ray", "BP Box", "BP Sphere", "BP Point", "BP OBox", "BP Cast Box" }, (int)mProbeMode, [this](int inItem) { mProbeMode = (EProbeMode)inItem; });
 			mDebugUI->CreateComboBox(probe_options, "Shape", { "Sphere", "Box", "ConvexHull", "Capsule", "TaperedCapsule", "Cylinder", "Triangle", "RotatedTranslated", "StaticCompound", "StaticCompound2", "MutableCompound", "Mesh" }, (int)mProbeShape, [this](int inItem) { mProbeShape = (EProbeShape)inItem; });
 			mDebugUI->CreateCheckBox(probe_options, "Scale Shape", mScaleShape, [this](UICheckBox::EState inState) { mScaleShape = inState == UICheckBox::STATE_CHECKED; });
 			mDebugUI->CreateSlider(probe_options, "Scale X", mShapeScale.GetX(), -5.0f, 5.0f, 0.1f, [this](float inValue) { mShapeScale.SetX(inValue); });
 			mDebugUI->CreateSlider(probe_options, "Scale Y", mShapeScale.GetY(), -5.0f, 5.0f, 0.1f, [this](float inValue) { mShapeScale.SetY(inValue); });
 			mDebugUI->CreateSlider(probe_options, "Scale Z", mShapeScale.GetZ(), -5.0f, 5.0f, 0.1f, [this](float inValue) { mShapeScale.SetZ(inValue); });
-			mDebugUI->CreateComboBox(probe_options, "Back Face Cull", { "On", "Off" }, (int)mBackFaceMode, [this](int inItem) { mBackFaceMode = (EBackFaceMode)inItem; });
+			mDebugUI->CreateComboBox(probe_options, "Back Face Cull Triangles", { "On", "Off" }, (int)mBackFaceModeTriangles, [this](int inItem) { mBackFaceModeTriangles = (EBackFaceMode)inItem; });
+			mDebugUI->CreateComboBox(probe_options, "Back Face Cull Convex", { "On", "Off" }, (int)mBackFaceModeConvex, [this](int inItem) { mBackFaceModeConvex = (EBackFaceMode)inItem; });
 			mDebugUI->CreateComboBox(probe_options, "Active Edge Mode", { "Only Active", "All" }, (int)mActiveEdgeMode, [this](int inItem) { mActiveEdgeMode = (EActiveEdgeMode)inItem; });
 			mDebugUI->CreateComboBox(probe_options, "Collect Faces Mode", { "Collect Faces", "No Faces" }, (int)mCollectFacesMode, [this](int inItem) { mCollectFacesMode = (ECollectFacesMode)inItem; });
 			mDebugUI->CreateSlider(probe_options, "Max Separation Distance", mMaxSeparationDistance, 0.0f, 5.0f, 0.1f, [this](float inValue) { mMaxSeparationDistance = inValue; });
@@ -566,6 +592,7 @@ SamplesApp::SamplesApp()
 			mDebugUI->CreateCheckBox(probe_options, "Shrunken Shape + Convex Radius", mUseShrunkenShapeAndConvexRadius, [this](UICheckBox::EState inState) { mUseShrunkenShapeAndConvexRadius = inState == UICheckBox::STATE_CHECKED; });
 			mDebugUI->CreateCheckBox(probe_options, "Draw Supporting Face", mDrawSupportingFace, [this](UICheckBox::EState inState) { mDrawSupportingFace = inState == UICheckBox::STATE_CHECKED; });
 			mDebugUI->CreateSlider(probe_options, "Max Hits", float(mMaxHits), 0, 10, 1, [this](float inValue) { mMaxHits = (int)inValue; });
+			mDebugUI->CreateCheckBox(probe_options, "Closest Hit Per Body", mClosestHitPerBody, [this](UICheckBox::EState inState) { mClosestHitPerBody = inState == UICheckBox::STATE_CHECKED; });
 			mDebugUI->ShowMenu(probe_options);
 		});
 		mDebugUI->CreateTextButton(main_menu, "Shoot Object", [this]() {
@@ -601,8 +628,8 @@ SamplesApp::SamplesApp()
 		mDebugUI->ShowMenu(main_menu);
 	}
 
-	// Get test name from commandline
-	String cmd_line = ToLower(GetCommandLineA());
+	// Get test name from command line
+	String cmd_line = ToLower(inCommandLine);
 	Array<String> args;
 	StringToVector(cmd_line, args, " ");
 	if (args.size() == 2)
@@ -745,7 +772,7 @@ bool SamplesApp::NextTest()
 		if (mExitAfterRunningTests)
 			return false; // Exit the application now
 		else
-			MessageBoxA(nullptr, "Test run complete!", "Complete", MB_OK);
+			Alert("Test run complete!");
 	}
 	else
 	{
@@ -904,7 +931,7 @@ RefConst<Shape> SamplesApp::CreateProbeShape()
 	JPH_ASSERT(shape != nullptr);
 
 	// Scale the shape
-	Vec3 scale = mScaleShape? shape->MakeScaleValid(mShapeScale) : Vec3::sReplicate(1.0f);
+	Vec3 scale = mScaleShape? shape->MakeScaleValid(mShapeScale) : Vec3::sOne();
 	JPH_ASSERT(shape->IsValidScale(scale)); // Double check the MakeScaleValid function
 	if (!ScaleHelpers::IsNotScaled(scale))
 		shape = new ScaledShape(shape, scale);
@@ -915,7 +942,7 @@ RefConst<Shape> SamplesApp::CreateProbeShape()
 RefConst<Shape> SamplesApp::CreateShootObjectShape()
 {
 	// Get the scale
-	Vec3 scale = mShootObjectScaleShape? mShootObjectShapeScale : Vec3::sReplicate(1.0f);
+	Vec3 scale = mShootObjectScaleShape? mShootObjectShapeScale : Vec3::sOne();
 
 	// Make it minimally -0.1 or 0.1 depending on the sign
 	Vec3 clamped_value = Vec3::sSelect(Vec3::sReplicate(-0.1f), Vec3::sReplicate(0.1f), Vec3::sGreaterOrEqual(scale, Vec3::sZero()));
@@ -977,7 +1004,7 @@ RefConst<Shape> SamplesApp::CreateShootObjectShape()
 	}
 
 	// Scale shape if needed
-	if (scale != Vec3::sReplicate(1.0f))
+	if (scale != Vec3::sOne())
 		shape = new ScaledShape(shape, scale);
 
 	return shape;
@@ -999,7 +1026,7 @@ void SamplesApp::ShootObject()
 	}
 	else
 	{
-		Ref<SoftBodySharedSettings> shared_settings = SoftBodyCreator::CreateCube(5, 0.5f * GetWorldScale());
+		Ref<SoftBodySharedSettings> shared_settings = SoftBodySharedSettings::sCreateCube(5, 0.5f * GetWorldScale());
 		for (SoftBodySharedSettings::Vertex &v : shared_settings->mVertices)
 		{
 			v.mInvMass = 0.025f;
@@ -1122,7 +1149,8 @@ bool SamplesApp::CastProbe(float inProbeLength, float &outFraction, RVec3 &outPo
 
 			// Create settings
 			RayCastSettings settings;
-			settings.mBackFaceMode = mBackFaceMode;
+			settings.mBackFaceModeTriangles = mBackFaceModeTriangles;
+			settings.mBackFaceModeConvex = mBackFaceModeConvex;
 			settings.mTreatConvexAsSolid = mTreatConvexAsSolid;
 
 			// Cast ray
@@ -1140,6 +1168,15 @@ bool SamplesApp::CastProbe(float inProbeLength, float &outFraction, RVec3 &outPo
 				mPhysicsSystem->GetNarrowPhaseQuery().CastRay(ray, settings, collector);
 				if (collector.HadHit())
 					hits.push_back(collector.mHit);
+			}
+			else if (mClosestHitPerBody)
+			{
+				ClosestHitPerBodyCollisionCollector<CastRayCollector> collector;
+				mPhysicsSystem->GetNarrowPhaseQuery().CastRay(ray, settings, collector);
+				collector.Sort();
+				hits.insert(hits.end(), collector.mHits.begin(), collector.mHits.end());
+				if ((int)hits.size() > mMaxHits)
+					hits.resize(mMaxHits);
 			}
 			else
 			{
@@ -1247,6 +1284,7 @@ bool SamplesApp::CastProbe(float inProbeLength, float &outFraction, RVec3 &outPo
 		break;
 
 	case EProbeMode::CollideShape:
+	case EProbeMode::CollideShapeWithInternalEdgeRemoval:
 		{
 			// Create shape cast
 			RefConst<Shape> shape = CreateProbeShape();
@@ -1257,29 +1295,41 @@ bool SamplesApp::CastProbe(float inProbeLength, float &outFraction, RVec3 &outPo
 			// Create settings
 			CollideShapeSettings settings;
 			settings.mActiveEdgeMode = mActiveEdgeMode;
-			settings.mBackFaceMode = mBackFaceMode;
+			settings.mBackFaceMode = mBackFaceModeTriangles;
 			settings.mCollectFacesMode = mCollectFacesMode;
 			settings.mMaxSeparationDistance = mMaxSeparationDistance;
+
+			// Select the right function
+			auto collide_shape_function = mProbeMode == EProbeMode::CollideShape? &NarrowPhaseQuery::CollideShape : &NarrowPhaseQuery::CollideShapeWithInternalEdgeRemoval;
 
 			Array<CollideShapeResult> hits;
 			if (mMaxHits == 0)
 			{
 				AnyHitCollisionCollector<CollideShapeCollector> collector;
-				mPhysicsSystem->GetNarrowPhaseQuery().CollideShape(shape, Vec3::sReplicate(1.0f), shape_transform, settings, base_offset, collector);
+				(mPhysicsSystem->GetNarrowPhaseQuery().*collide_shape_function)(shape, Vec3::sOne(), shape_transform, settings, base_offset, collector, { }, { }, { }, { });
 				if (collector.HadHit())
 					hits.push_back(collector.mHit);
 			}
 			else if (mMaxHits == 1)
 			{
 				ClosestHitCollisionCollector<CollideShapeCollector> collector;
-				mPhysicsSystem->GetNarrowPhaseQuery().CollideShape(shape, Vec3::sReplicate(1.0f), shape_transform, settings, base_offset, collector);
+				(mPhysicsSystem->GetNarrowPhaseQuery().*collide_shape_function)(shape, Vec3::sOne(), shape_transform, settings, base_offset, collector, { }, { }, { }, { });
 				if (collector.HadHit())
 					hits.push_back(collector.mHit);
+			}
+			else if (mClosestHitPerBody)
+			{
+				ClosestHitPerBodyCollisionCollector<CollideShapeCollector> collector;
+				(mPhysicsSystem->GetNarrowPhaseQuery().*collide_shape_function)(shape, Vec3::sOne(), shape_transform, settings, base_offset, collector, { }, { }, { }, { });
+				collector.Sort();
+				hits.insert(hits.end(), collector.mHits.begin(), collector.mHits.end());
+				if ((int)hits.size() > mMaxHits)
+					hits.resize(mMaxHits);
 			}
 			else
 			{
 				AllHitCollisionCollector<CollideShapeCollector> collector;
-				mPhysicsSystem->GetNarrowPhaseQuery().CollideShape(shape, Vec3::sReplicate(1.0f), shape_transform, settings, base_offset, collector);
+				(mPhysicsSystem->GetNarrowPhaseQuery().*collide_shape_function)(shape, Vec3::sOne(), shape_transform, settings, base_offset, collector, { }, { }, { }, { });
 				collector.Sort();
 				hits.insert(hits.end(), collector.mHits.begin(), collector.mHits.end());
 				if ((int)hits.size() > mMaxHits)
@@ -1330,7 +1380,7 @@ bool SamplesApp::CastProbe(float inProbeLength, float &outFraction, RVec3 &outPo
 
 		#ifdef JPH_DEBUG_RENDERER
 			// Draw shape
-			shape->Draw(mDebugRenderer, shape_transform, Vec3::sReplicate(1.0f), had_hit? Color::sGreen : Color::sGrey, false, false);
+			shape->Draw(mDebugRenderer, shape_transform, Vec3::sOne(), had_hit? Color::sGreen : Color::sGrey, false, false);
 		#endif // JPH_DEBUG_RENDERER
 		}
 		break;
@@ -1340,14 +1390,14 @@ bool SamplesApp::CastProbe(float inProbeLength, float &outFraction, RVec3 &outPo
 			// Create shape cast
 			RefConst<Shape> shape = CreateProbeShape();
 			Mat44 rotation = Mat44::sRotation(Vec3::sAxisX(), 0.1f * JPH_PI) * Mat44::sRotation(Vec3::sAxisY(), 0.2f * JPH_PI);
-			RShapeCast shape_cast = RShapeCast::sFromWorldTransform(shape, Vec3::sReplicate(1.0f), RMat44::sTranslation(start) * rotation, direction);
+			RShapeCast shape_cast = RShapeCast::sFromWorldTransform(shape, Vec3::sOne(), RMat44::sTranslation(start) * rotation, direction);
 
 			// Settings
 			ShapeCastSettings settings;
 			settings.mUseShrunkenShapeAndConvexRadius = mUseShrunkenShapeAndConvexRadius;
 			settings.mActiveEdgeMode = mActiveEdgeMode;
-			settings.mBackFaceModeTriangles = mBackFaceMode;
-			settings.mBackFaceModeConvex = mBackFaceMode;
+			settings.mBackFaceModeTriangles = mBackFaceModeTriangles;
+			settings.mBackFaceModeConvex = mBackFaceModeConvex;
 			settings.mReturnDeepestPoint = mReturnDeepestPoint;
 			settings.mCollectFacesMode = mCollectFacesMode;
 
@@ -1366,6 +1416,15 @@ bool SamplesApp::CastProbe(float inProbeLength, float &outFraction, RVec3 &outPo
 				mPhysicsSystem->GetNarrowPhaseQuery().CastShape(shape_cast, settings, base_offset, collector);
 				if (collector.HadHit())
 					hits.push_back(collector.mHit);
+			}
+			else if (mClosestHitPerBody)
+			{
+				ClosestHitPerBodyCollisionCollector<CastShapeCollector> collector;
+				mPhysicsSystem->GetNarrowPhaseQuery().CastShape(shape_cast, settings, base_offset, collector);
+				collector.Sort();
+				hits.insert(hits.end(), collector.mHits.begin(), collector.mHits.end());
+				if ((int)hits.size() > mMaxHits)
+					hits.resize(mMaxHits);
 			}
 			else
 			{
@@ -1405,7 +1464,7 @@ bool SamplesApp::CastProbe(float inProbeLength, float &outFraction, RVec3 &outPo
 						// Draw shape
 						Color color = hit_body.IsDynamic()? Color::sYellow : Color::sOrange;
 					#ifdef JPH_DEBUG_RENDERER
-						shape_cast.mShape->Draw(mDebugRenderer, shape_cast.mCenterOfMassStart.PostTranslated(hit.mFraction * shape_cast.mDirection), Vec3::sReplicate(1.0f), color, false, false);
+						shape_cast.mShape->Draw(mDebugRenderer, shape_cast.mCenterOfMassStart.PostTranslated(hit.mFraction * shape_cast.mDirection), Vec3::sOne(), color, false, false);
 					#endif // JPH_DEBUG_RENDERER
 
 						// Draw normal
@@ -1441,7 +1500,7 @@ bool SamplesApp::CastProbe(float inProbeLength, float &outFraction, RVec3 &outPo
 				// Draw 'miss'
 				mDebugRenderer->DrawLine(start, start + direction, Color::sRed);
 			#ifdef JPH_DEBUG_RENDERER
-				shape_cast.mShape->Draw(mDebugRenderer, shape_cast.mCenterOfMassStart.PostTranslated(shape_cast.mDirection), Vec3::sReplicate(1.0f), Color::sRed, false, false);
+				shape_cast.mShape->Draw(mDebugRenderer, shape_cast.mCenterOfMassStart.PostTranslated(shape_cast.mDirection), Vec3::sOne(), Color::sRed, false, false);
 			#endif // JPH_DEBUG_RENDERER
 			}
 		}
@@ -1449,31 +1508,32 @@ bool SamplesApp::CastProbe(float inProbeLength, float &outFraction, RVec3 &outPo
 
 	case EProbeMode::CollideSoftBody:
 		{
-			// Create a soft body vertex
 			const float fraction = 0.2f;
 			const float max_distance = 10.0f;
-			SoftBodyVertex vertex;
-			vertex.mInvMass = 1.0f;
-			vertex.mPosition = fraction * direction;
-			vertex.mVelocity = 10.0f * direction;
-			vertex.mCollidingShapeIndex = -1;
-			vertex.mLargestPenetration = -FLT_MAX;
+
+			// Create a soft body vertex iterator
+			const float inv_mass = 1.0f;
+			const Vec3 position = fraction * direction;
+			Plane largest_penetration_collision_plane;
+			float largest_penetration = -FLT_MAX;
+			int largest_penetration_colliding_shape_idx = -1;
+			CollideSoftBodyVertexIterator vertex_iterator(&position, &inv_mass, &largest_penetration_collision_plane, &largest_penetration, &largest_penetration_colliding_shape_idx);
 
 			// Get shapes in a large radius around the start position
-			AABox box(Vec3(start + vertex.mPosition), max_distance);
+			AABox box(Vec3(start + position), max_distance);
 			AllHitCollisionCollector<TransformedShapeCollector> collector;
 			mPhysicsSystem->GetNarrowPhaseQuery().CollectTransformedShapes(box, collector);
 
 			// Closest point found using CollideShape, position relative to 'start'
-			Vec3 closest_point = vertex.mPosition;
+			Vec3 closest_point = position;
 			float closest_point_penetration = 0;
 
 			// Test against each shape
 			for (const TransformedShape &ts : collector.mHits)
 			{
 				int colliding_shape_index = int(&ts - collector.mHits.data());
-				ts.mShape->CollideSoftBodyVertices((RMat44::sTranslation(-start) * ts.GetCenterOfMassTransform()).ToMat44(), ts.GetShapeScale(), &vertex, 1, 1.0f / 60.0f, Vec3::sZero(), colliding_shape_index);
-				if (vertex.mCollidingShapeIndex == colliding_shape_index)
+				ts.mShape->CollideSoftBodyVertices((RMat44::sTranslation(-start) * ts.GetCenterOfMassTransform()).ToMat44(), ts.GetShapeScale(), vertex_iterator, 1, colliding_shape_index);
+				if (largest_penetration_colliding_shape_idx == colliding_shape_index)
 				{
 					// To draw a plane, we need a point but CollideSoftBodyVertices doesn't provide one, so we use CollideShape with a tiny sphere to get the closest point and then project that onto the plane to draw the plane
 					SphereShape point_sphere(1.0e-6f);
@@ -1481,7 +1541,7 @@ bool SamplesApp::CastProbe(float inProbeLength, float &outFraction, RVec3 &outPo
 					CollideShapeSettings settings;
 					settings.mMaxSeparationDistance = sqrt(3.0f) * max_distance; // Box is extended in all directions by max_distance
 					ClosestHitCollisionCollector<CollideShapeCollector> collide_shape_collector;
-					ts.CollideShape(&point_sphere, Vec3::sReplicate(1.0f), RMat44::sTranslation(start + vertex.mPosition), settings, start, collide_shape_collector);
+					ts.CollideShape(&point_sphere, Vec3::sOne(), RMat44::sTranslation(start + position), settings, start, collide_shape_collector);
 					if (collide_shape_collector.HadHit())
 					{
 						closest_point = collide_shape_collector.mHit.mContactPointOn2;
@@ -1491,19 +1551,19 @@ bool SamplesApp::CastProbe(float inProbeLength, float &outFraction, RVec3 &outPo
 			}
 
 			// Draw test point
-			mDebugRenderer->DrawMarker(start + vertex.mPosition, Color::sYellow, 0.1f);
+			mDebugRenderer->DrawMarker(start + position, Color::sYellow, 0.1f);
 			mDebugRenderer->DrawMarker(start + closest_point, Color::sRed, 0.1f);
 
 			// Draw collision plane
-			if (vertex.mCollidingShapeIndex != -1)
+			if (largest_penetration_colliding_shape_idx != -1)
 			{
-				RVec3 plane_point = start + vertex.mPosition - vertex.mCollisionPlane.GetNormal() * vertex.mCollisionPlane.SignedDistance(vertex.mPosition);
-				mDebugRenderer->DrawPlane(plane_point, vertex.mCollisionPlane.GetNormal(), Color::sGreen, 2.0f);
+				RVec3 plane_point = start + position - largest_penetration_collision_plane.GetNormal() * largest_penetration_collision_plane.SignedDistance(position);
+				mDebugRenderer->DrawPlane(plane_point, largest_penetration_collision_plane.GetNormal(), Color::sGreen, 2.0f);
 
-				if (abs(closest_point_penetration - vertex.mLargestPenetration) > 0.001f)
-					mDebugRenderer->DrawText3D(plane_point, StringFormat("Pen %f (exp %f)", (double)vertex.mLargestPenetration, (double)closest_point_penetration));
+				if (abs(closest_point_penetration - largest_penetration) > 0.001f)
+					mDebugRenderer->DrawText3D(plane_point, StringFormat("Pen %f (exp %f)", (double)largest_penetration, (double)closest_point_penetration));
 				else
-					mDebugRenderer->DrawText3D(plane_point, StringFormat("Pen %f", (double)vertex.mLargestPenetration));
+					mDebugRenderer->DrawText3D(plane_point, StringFormat("Pen %f", (double)largest_penetration));
 			}
 		}
 		break;
@@ -1829,7 +1889,7 @@ void SamplesApp::UpdateDebug(float inDeltaTime)
 	BodyInterface &bi = mPhysicsSystem->GetBodyInterface();
 
 	// Handle keyboard input for which simulation needs to be running
-	if (mKeyboard->IsKeyPressedAndTriggered(DIK_B, mWasShootKeyPressed))
+	if (mKeyboard->IsKeyPressedAndTriggered(EKey::B, mWasShootKeyPressed))
 		ShootObject();
 
 	// Allow the user to drag rigid/soft bodies around
@@ -1840,7 +1900,7 @@ void SamplesApp::UpdateDebug(float inDeltaTime)
 		if (CastProbe(cDragRayLength, mDragFraction, hit_position, mDragBody))
 		{
 			// If key is pressed create constraint to start dragging
-			if (mKeyboard->IsKeyPressed(DIK_SPACE))
+			if (mKeyboard->IsKeyPressed(EKey::Space))
 			{
 				// Target body must be dynamic
 				BodyLockWrite lock(mPhysicsSystem->GetBodyLockInterface(), mDragBody);
@@ -1893,7 +1953,7 @@ void SamplesApp::UpdateDebug(float inDeltaTime)
 	}
 	else
 	{
-		if (!mKeyboard->IsKeyPressed(DIK_SPACE))
+		if (!mKeyboard->IsKeyPressed(EKey::Space))
 		{
 			// If key released, destroy constraint
 			if (mDragConstraint != nullptr)
@@ -1980,24 +2040,24 @@ bool SamplesApp::UpdateFrame(float inDeltaTime)
 		return false;
 
 	// Handle keyboard input
-	bool shift = mKeyboard->IsKeyPressed(DIK_LSHIFT) || mKeyboard->IsKeyPressed(DIK_RSHIFT);
+	bool shift = mKeyboard->IsKeyPressed(EKey::LShift) || mKeyboard->IsKeyPressed(EKey::RShift);
 #ifdef JPH_DEBUG_RENDERER
-	bool alt = mKeyboard->IsKeyPressed(DIK_LALT) || mKeyboard->IsKeyPressed(DIK_RALT);
+	bool alt = mKeyboard->IsKeyPressed(EKey::LAlt) || mKeyboard->IsKeyPressed(EKey::RAlt);
 #endif // JPH_DEBUG_RENDERER
-	for (int key = mKeyboard->GetFirstKey(); key != 0; key = mKeyboard->GetNextKey())
+	for (EKey key = mKeyboard->GetFirstKey(); key != EKey::Invalid; key = mKeyboard->GetNextKey())
 		switch (key)
 		{
-		case DIK_R:
+		case EKey::R:
 			StartTest(mTestClass);
 			return true;
 
-		case DIK_N:
+		case EKey::N:
 			if (!mTestsToRun.empty())
 				NextTest();
 			break;
 
 	#ifdef JPH_DEBUG_RENDERER
-		case DIK_H:
+		case EKey::H:
 			if (shift)
 				mBodyDrawSettings.mDrawGetSupportFunction = !mBodyDrawSettings.mDrawGetSupportFunction;
 			else if (alt)
@@ -2006,46 +2066,46 @@ bool SamplesApp::UpdateFrame(float inDeltaTime)
 				mBodyDrawSettings.mDrawShape = !mBodyDrawSettings.mDrawShape;
 			break;
 
-		case DIK_F:
+		case EKey::F:
 			if (shift)
 				mBodyDrawSettings.mDrawGetSupportingFace = !mBodyDrawSettings.mDrawGetSupportingFace;
 			break;
 
-		case DIK_I:
+		case EKey::I:
 			mBodyDrawSettings.mDrawMassAndInertia = !mBodyDrawSettings.mDrawMassAndInertia;
 			break;
 
-		case DIK_1:
+		case EKey::Num1:
 			ContactConstraintManager::sDrawContactPoint = !ContactConstraintManager::sDrawContactPoint;
 			break;
 
-		case DIK_2:
+		case EKey::Num2:
 			ContactConstraintManager::sDrawSupportingFaces = !ContactConstraintManager::sDrawSupportingFaces;
 			break;
 
-		case DIK_3:
+		case EKey::Num3:
 			ContactConstraintManager::sDrawContactPointReduction = !ContactConstraintManager::sDrawContactPointReduction;
 			break;
 
-		case DIK_C:
+		case EKey::C:
 			mDrawConstraints = !mDrawConstraints;
 			break;
 
-		case DIK_L:
+		case EKey::L:
 			mDrawConstraintLimits = !mDrawConstraintLimits;
 			break;
 
-		case DIK_M:
+		case EKey::M:
 			ContactConstraintManager::sDrawContactManifolds = !ContactConstraintManager::sDrawContactManifolds;
 			break;
 
-		case DIK_W:
+		case EKey::W:
 			if (alt)
 				mBodyDrawSettings.mDrawShapeWireframe = !mBodyDrawSettings.mDrawShapeWireframe;
 			break;
 	#endif // JPH_DEBUG_RENDERER
 
-		case DIK_COMMA:
+		case EKey::Comma:
 			// Back stepping
 			if (mPlaybackFrames.size() > 1)
 			{
@@ -2058,7 +2118,7 @@ bool SamplesApp::UpdateFrame(float inDeltaTime)
 			}
 			break;
 
-		case DIK_PERIOD:
+		case EKey::Period:
 			// Forward stepping
 			if (mPlaybackMode != EPlaybackMode::Play)
 			{
@@ -2308,7 +2368,7 @@ void SamplesApp::DrawPhysics()
 
 						// Start iterating all triangles of the shape
 						Shape::GetTrianglesContext context;
-						transformed_shape.mShape->GetTrianglesStart(context, AABox::sBiggest(), Vec3::sZero(), Quat::sIdentity(), Vec3::sReplicate(1.0f));
+						transformed_shape.mShape->GetTrianglesStart(context, AABox::sBiggest(), Vec3::sZero(), Quat::sIdentity(), Vec3::sOne());
 						for (;;)
 						{
 							// Get the next batch of vertices
@@ -2505,7 +2565,6 @@ void SamplesApp::GetInitialCamera(CameraState &ioState) const
 	// Default if the test doesn't override it
 	ioState.mPos = GetWorldScale() * RVec3(30, 10, 30);
 	ioState.mForward = -Vec3(ioState.mPos).Normalized();
-	ioState.mFarPlane = 1000.0f;
 
 	mTest->GetInitialCamera(ioState);
 }

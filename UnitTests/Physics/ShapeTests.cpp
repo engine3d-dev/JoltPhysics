@@ -10,6 +10,7 @@
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/TaperedCapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
+#include <Jolt/Physics/Collision/Shape/TaperedCylinderShape.h>
 #include <Jolt/Physics/Collision/Shape/ScaledShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/MutableCompoundShape.h>
@@ -21,6 +22,7 @@
 #include <Jolt/Physics/Collision/CollidePointResult.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/CollisionDispatch.h>
 #include <Jolt/Core/StreamWrapper.h>
 
 TEST_SUITE("ShapeTests")
@@ -83,7 +85,7 @@ TEST_SUITE("ShapeTests")
 
 		// Extract support points
 		ConvexShape::SupportBuffer buffer;
-		const ConvexShape::Support *support = capsule.GetSupportFunction(ConvexShape::ESupportMode::IncludeConvexRadius, buffer, Vec3::sReplicate(1.0f));
+		const ConvexShape::Support *support = capsule.GetSupportFunction(ConvexShape::ESupportMode::IncludeConvexRadius, buffer, Vec3::sOne());
 		Array<Vec3> capsule_points;
 		capsule_points.reserve(Vec3::sUnitSphere.size());
 		for (const Vec3 &v : Vec3::sUnitSphere)
@@ -167,6 +169,19 @@ TEST_SUITE("ShapeTests")
 		CHECK(cylinder->MakeScaleValid(Vec3::sZero()).IsClose(Vec3::sReplicate(ScaleHelpers::cMinScale), cMinScaleToleranceSq));
 		CHECK(cylinder->MakeScaleValid(Vec3(-1.0e-10f, 1, 1.0e-10f)) == Vec3(-ScaleHelpers::cMinScale, 1, ScaleHelpers::cMinScale));
 		CHECK(cylinder->MakeScaleValid(Vec3(2, 5, -4)) == Vec3(3, 5, -3));
+
+		Ref<Shape> tapered_cylinder = TaperedCylinderShapeSettings(0.5f, 2.0f, 3.0f).Create().Get();
+		CHECK(!tapered_cylinder->IsValidScale(Vec3::sZero()));
+		CHECK(!tapered_cylinder->IsValidScale(Vec3(0, 1, 0)));
+		CHECK(!tapered_cylinder->IsValidScale(Vec3(1, 0, 1)));
+		CHECK(tapered_cylinder->IsValidScale(Vec3(2, 2, 2)));
+		CHECK(tapered_cylinder->IsValidScale(Vec3(-1, 1, -1)));
+		CHECK(!tapered_cylinder->IsValidScale(Vec3(2, 1, 1)));
+		CHECK(tapered_cylinder->IsValidScale(Vec3(1, 2, 1)));
+		CHECK(!tapered_cylinder->IsValidScale(Vec3(1, 1, 2)));
+		CHECK(tapered_cylinder->MakeScaleValid(Vec3::sZero()).IsClose(Vec3::sReplicate(ScaleHelpers::cMinScale), cMinScaleToleranceSq));
+		CHECK(tapered_cylinder->MakeScaleValid(Vec3(-1.0e-10f, 1, 1.0e-10f)) == Vec3(-ScaleHelpers::cMinScale, 1, ScaleHelpers::cMinScale));
+		CHECK(tapered_cylinder->MakeScaleValid(Vec3(2, 5, -4)) == Vec3(3, 5, -3));
 
 		Ref<Shape> triangle = new TriangleShape(Vec3(1, 2, 3), Vec3(4, 5, 6), Vec3(7, 8, 9));
 		CHECK(!triangle->IsValidScale(Vec3::sZero()));
@@ -700,7 +715,7 @@ TEST_SUITE("ShapeTests")
 		// Create a heightfield
 		float *samples = new float [cHeightFieldSamples * cHeightFieldSamples];
 		memset(samples, 0, cHeightFieldSamples * cHeightFieldSamples * sizeof(float));
-		RefConst<Shape> previous_shape = HeightFieldShapeSettings(samples, Vec3::sZero(), Vec3::sReplicate(1.0f), cHeightFieldSamples).Create().Get();
+		RefConst<Shape> previous_shape = HeightFieldShapeSettings(samples, Vec3::sZero(), Vec3::sOne(), cHeightFieldSamples).Create().Get();
 		delete [] samples;
 
 		// Calculate the amount of bits needed to address all triangles in the heightfield
@@ -737,22 +752,35 @@ TEST_SUITE("ShapeTests")
 	TEST_CASE("TestEmptyMutableCompound")
 	{
 		// Create empty shape
-		RefConst<Shape> mutable_compound = new MutableCompoundShape();
+		Ref<MutableCompoundShape> mutable_compound = new MutableCompoundShape();
 
 		// A non-identity rotation
 		Quat rotation = Quat::sRotation(Vec3::sReplicate(1.0f / sqrt(3.0f)), 0.1f * JPH_PI);
 
-		// Check that local bounding box is invalid
+		// Check that local bounding box is a single point
 		AABox bounds1 = mutable_compound->GetLocalBounds();
-		CHECK(!bounds1.IsValid());
+		CHECK(bounds1 == AABox(Vec3::sZero(), Vec3::sZero()));
 
-		// Check that get world space bounds returns an invalid bounding box
-		AABox bounds2 = mutable_compound->GetWorldSpaceBounds(Mat44::sRotationTranslation(rotation, Vec3(100, 200, 300)), Vec3(1, 2, 3));
-		CHECK(!bounds2.IsValid());
+		// Check that get world space bounds returns a single point
+		Vec3 vec3_pos(100, 200, 300);
+		AABox bounds2 = mutable_compound->GetWorldSpaceBounds(Mat44::sRotationTranslation(rotation, vec3_pos), Vec3(1, 2, 3));
+		CHECK(bounds2 == AABox(vec3_pos, vec3_pos));
 
-		// Check that get world space bounds returns an invalid bounding box for double precision parameters
-		AABox bounds3 = mutable_compound->GetWorldSpaceBounds(DMat44::sRotationTranslation(rotation, DVec3(100, 200, 300)), Vec3(1, 2, 3));
-		CHECK(!bounds3.IsValid());
+		// Check that get world space bounds returns a single point for double precision parameters
+		AABox bounds3 = mutable_compound->GetWorldSpaceBounds(DMat44::sRotationTranslation(rotation, DVec3(vec3_pos)), Vec3(1, 2, 3));
+		CHECK(bounds3 == AABox(vec3_pos, vec3_pos));
+
+		// Add a shape
+		mutable_compound->AddShape(Vec3::sZero(), Quat::sIdentity(), new BoxShape(Vec3::sReplicate(1.0f)));
+		AABox bounds4 = mutable_compound->GetLocalBounds();
+		CHECK(bounds4 == AABox(Vec3::sReplicate(-1.0f), Vec3::sReplicate(1.0f)));
+
+		// Remove it again
+		mutable_compound->RemoveShape(0);
+
+		// Check that the bounding box has zero size again
+		AABox bounds5 = mutable_compound->GetLocalBounds();
+		CHECK(bounds5 == AABox(Vec3::sZero(), Vec3::sZero()));
 	}
 
 	TEST_CASE("TestSaveMeshShape")
@@ -809,50 +837,76 @@ TEST_SUITE("ShapeTests")
 		}
 	}
 
-	TEST_CASE("TestMutableCompoundShapeAdjustCenterOfMass")
+	TEST_CASE("TestMeshShapePerTriangleUserData")
 	{
-		// Start with a box at (-1 0 0)
-		MutableCompoundShapeSettings settings;
-		Ref<Shape> box_shape1 = new BoxShape(Vec3::sReplicate(1.0f));
-		box_shape1->SetUserData(1);
-		settings.AddShape(Vec3(-1.0f, 0.0f, 0.0f), Quat::sIdentity(), box_shape1);
-		Ref<MutableCompoundShape> shape = StaticCast<MutableCompoundShape>(settings.Create().Get());
-		CHECK(shape->GetCenterOfMass() == Vec3(-1.0f, 0.0f, 0.0f));
-		CHECK(shape->GetLocalBounds() == AABox(Vec3::sReplicate(-1.0f), Vec3::sReplicate(1.0f)));
+		UnitTestRandom random;
 
-		// Check that we can hit the box
-		AllHitCollisionCollector<CollidePointCollector> collector;
-		shape->CollidePoint(Vec3(-0.5f, 0.0f, 0.0f) - shape->GetCenterOfMass(), SubShapeIDCreator(), collector);
-		CHECK((collector.mHits.size() == 1 && shape->GetSubShapeUserData(collector.mHits[0].mSubShapeID2) == 1));
-		collector.Reset();
-		CHECK(collector.mHits.empty());
+		// Create regular grid of triangles
+		TriangleList triangles[2];
+		for (int x = 0; x < 20; ++x)
+			for (int z = 0; z < 20; ++z)
+			{
+				float x1 = 10.0f * x;
+				float z1 = 10.0f * z;
+				float x2 = x1 + 10.0f;
+				float z2 = z1 + 10.0f;
 
-		// Now add another box at (1 0 0)
-		Ref<Shape> box_shape2 = new BoxShape(Vec3::sReplicate(1.0f));
-		box_shape2->SetUserData(2);
-		shape->AddShape(Vec3(1.0f, 0.0f, 0.0f), Quat::sIdentity(), box_shape2);
-		CHECK(shape->GetCenterOfMass() == Vec3(-1.0f, 0.0f, 0.0f));
-		CHECK(shape->GetLocalBounds() == AABox(Vec3(-1.0f, -1.0f, -1.0f), Vec3(3.0f, 1.0f, 1.0f)));
+				Float3 v1 = Float3(x1, 0, z1);
+				Float3 v2 = Float3(x2, 0, z1);
+				Float3 v3 = Float3(x1, 0, z2);
+				Float3 v4 = Float3(x2, 0, z2);
 
-		// Check that we can hit both boxes
-		shape->CollidePoint(Vec3(-0.5f, 0.0f, 0.0f) - shape->GetCenterOfMass(), SubShapeIDCreator(), collector);
-		CHECK((collector.mHits.size() == 1 && shape->GetSubShapeUserData(collector.mHits[0].mSubShapeID2) == 1));
-		collector.Reset();
-		shape->CollidePoint(Vec3(0.5f, 0.0f, 0.0f) - shape->GetCenterOfMass(), SubShapeIDCreator(), collector);
-		CHECK((collector.mHits.size() == 1 && shape->GetSubShapeUserData(collector.mHits[0].mSubShapeID2) == 2));
-		collector.Reset();
+				uint32 user_data = (x << 16) + z;
+				triangles[random() & 1].push_back(Triangle(v1, v3, v4, 0, user_data));
+				triangles[random() & 1].push_back(Triangle(v1, v4, v2, 0, user_data | 0x80000000));
+			}
 
-		// Adjust the center of mass
-		shape->AdjustCenterOfMass();
-		CHECK(shape->GetCenterOfMass() == Vec3::sZero());
-		CHECK(shape->GetLocalBounds() == AABox(Vec3(-2.0f, -1.0f, -1.0f), Vec3(2.0f, 1.0f, 1.0f)));
+		// Create a compound with 2 meshes
+		StaticCompoundShapeSettings compound_settings;
+		compound_settings.SetEmbedded();
+		for (TriangleList &t : triangles)
+		{
+			// Shuffle the triangles
+			std::shuffle(t.begin(), t.end(), random);
 
-		// Check that we can hit both boxes
-		shape->CollidePoint(Vec3(-0.5f, 0.0f, 0.0f) - shape->GetCenterOfMass(), SubShapeIDCreator(), collector);
-		CHECK((collector.mHits.size() == 1 && shape->GetSubShapeUserData(collector.mHits[0].mSubShapeID2) == 1));
-		collector.Reset();
-		shape->CollidePoint(Vec3(0.5f, 0.0f, 0.0f) - shape->GetCenterOfMass(), SubShapeIDCreator(), collector);
-		CHECK((collector.mHits.size() == 1 && shape->GetSubShapeUserData(collector.mHits[0].mSubShapeID2) == 2));
-		collector.Reset();
+			// Create mesh
+			MeshShapeSettings mesh_settings(t);
+			mesh_settings.mPerTriangleUserData = true;
+			compound_settings.AddShape(Vec3::sZero(), Quat::sIdentity(), mesh_settings.Create().Get());
+		}
+		RefConst<Shape> compound = compound_settings.Create().Get();
+
+		// Collide the compound with a box to get all triangles back
+		RefConst<Shape> box = new BoxShape(Vec3::sReplicate(100.0f));
+		AllHitCollisionCollector<CollideShapeCollector> collector;
+		CollideShapeSettings settings;
+		settings.mCollectFacesMode = ECollectFacesMode::CollectFaces;
+		CollisionDispatch::sCollideShapeVsShape(box, compound, Vec3::sOne(), Vec3::sOne(), Mat44::sTranslation(Vec3(100.0f, 0, 100.0f)), Mat44::sIdentity(), SubShapeIDCreator(), SubShapeIDCreator(), settings, collector);
+		CHECK(collector.mHits.size() == triangles[0].size() + triangles[1].size());
+		for (const CollideShapeResult &r : collector.mHits)
+		{
+			// Get average vertex
+			Vec3 avg = Vec3::sZero();
+			for (const Vec3 &v : r.mShape2Face)
+				avg += v;
+
+			// Calculate the expected user data
+			avg = avg / 30.0f;
+			uint x = uint(avg.GetX());
+			uint z = uint(avg.GetZ());
+			uint32 expected_user_data = (x << 16) + z;
+			if (avg.GetX() - float(x) > 0.5f)
+				expected_user_data |= 0x80000000;
+
+			// Get the leaf shape (mesh shape in this case)
+			SubShapeID remainder;
+			const Shape *shape = compound->GetLeafShape(r.mSubShapeID2, remainder);
+			JPH_ASSERT(shape->GetType() == EShapeType::Mesh);
+
+			// Get user data from the triangle that was hit
+			uint32 user_data = static_cast<const MeshShape *>(shape)->GetTriangleUserData(remainder);
+
+			CHECK(user_data == expected_user_data);
+		}
 	}
 }

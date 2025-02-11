@@ -87,6 +87,10 @@ set(SAMPLES_SRC_FILES
 	${SAMPLES_ROOT}/Tests/General/EnhancedInternalEdgeRemovalTest.h
 	${SAMPLES_ROOT}/Tests/General/ShapeFilterTest.cpp
 	${SAMPLES_ROOT}/Tests/General/ShapeFilterTest.h
+	${SAMPLES_ROOT}/Tests/General/SimCollideBodyVsBodyTest.cpp
+	${SAMPLES_ROOT}/Tests/General/SimCollideBodyVsBodyTest.h
+	${SAMPLES_ROOT}/Tests/General/SimShapeFilterTest.cpp
+	${SAMPLES_ROOT}/Tests/General/SimShapeFilterTest.h
 	${SAMPLES_ROOT}/Tests/General/CenterOfMassTest.cpp
 	${SAMPLES_ROOT}/Tests/General/CenterOfMassTest.h
 	${SAMPLES_ROOT}/Tests/General/ChangeMotionQualityTest.cpp
@@ -177,6 +181,8 @@ set(SAMPLES_SRC_FILES
 	${SAMPLES_ROOT}/Tests/SoftBody/SoftBodyShapesTest.h
 	${SAMPLES_ROOT}/Tests/SoftBody/SoftBodySkinnedConstraintTest.cpp
 	${SAMPLES_ROOT}/Tests/SoftBody/SoftBodySkinnedConstraintTest.h
+	${SAMPLES_ROOT}/Tests/SoftBody/SoftBodySensorTest.cpp
+	${SAMPLES_ROOT}/Tests/SoftBody/SoftBodySensorTest.h
 	${SAMPLES_ROOT}/Tests/SoftBody/SoftBodyStressTest.cpp
 	${SAMPLES_ROOT}/Tests/SoftBody/SoftBodyStressTest.h
 	${SAMPLES_ROOT}/Tests/SoftBody/SoftBodyUpdatePositionTest.cpp
@@ -209,10 +215,14 @@ set(SAMPLES_SRC_FILES
 	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledHeightFieldShapeTest.h
 	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledMeshShapeTest.cpp
 	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledMeshShapeTest.h
+	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledPlaneShapeTest.cpp
+	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledPlaneShapeTest.h
 	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledSphereShapeTest.cpp
 	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledSphereShapeTest.h
 	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledTaperedCapsuleShapeTest.cpp
 	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledTaperedCapsuleShapeTest.h
+	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledTaperedCylinderShapeTest.cpp
+	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledTaperedCylinderShapeTest.h
 	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledTriangleShapeTest.cpp
 	${SAMPLES_ROOT}/Tests/ScaledShapes/ScaledTriangleShapeTest.h
 	${SAMPLES_ROOT}/Tests/Shapes/BoxShapeTest.cpp
@@ -221,6 +231,8 @@ set(SAMPLES_SRC_FILES
 	${SAMPLES_ROOT}/Tests/Shapes/CapsuleShapeTest.h
 	${SAMPLES_ROOT}/Tests/Shapes/DeformedHeightFieldShapeTest.cpp
 	${SAMPLES_ROOT}/Tests/Shapes/DeformedHeightFieldShapeTest.h
+	${SAMPLES_ROOT}/Tests/Shapes/EmptyShapeTest.cpp
+	${SAMPLES_ROOT}/Tests/Shapes/EmptyShapeTest.h
 	${SAMPLES_ROOT}/Tests/Shapes/StaticCompoundShapeTest.cpp
 	${SAMPLES_ROOT}/Tests/Shapes/StaticCompoundShapeTest.h
 	${SAMPLES_ROOT}/Tests/Shapes/MutableCompoundShapeTest.cpp
@@ -235,12 +247,18 @@ set(SAMPLES_SRC_FILES
 	${SAMPLES_ROOT}/Tests/Shapes/HeightFieldShapeTest.h
 	${SAMPLES_ROOT}/Tests/Shapes/MeshShapeTest.cpp
 	${SAMPLES_ROOT}/Tests/Shapes/MeshShapeTest.h
+	${SAMPLES_ROOT}/Tests/Shapes/MeshShapeUserDataTest.cpp
+	${SAMPLES_ROOT}/Tests/Shapes/MeshShapeUserDataTest.h
 	${SAMPLES_ROOT}/Tests/Shapes/SphereShapeTest.cpp
 	${SAMPLES_ROOT}/Tests/Shapes/SphereShapeTest.h
+	${SAMPLES_ROOT}/Tests/Shapes/PlaneShapeTest.cpp
+	${SAMPLES_ROOT}/Tests/Shapes/PlaneShapeTest.h
 	${SAMPLES_ROOT}/Tests/Shapes/RotatedTranslatedShapeTest.cpp
 	${SAMPLES_ROOT}/Tests/Shapes/RotatedTranslatedShapeTest.h
 	${SAMPLES_ROOT}/Tests/Shapes/TaperedCapsuleShapeTest.cpp
 	${SAMPLES_ROOT}/Tests/Shapes/TaperedCapsuleShapeTest.h
+	${SAMPLES_ROOT}/Tests/Shapes/TaperedCylinderShapeTest.cpp
+	${SAMPLES_ROOT}/Tests/Shapes/TaperedCylinderShapeTest.h
 	${SAMPLES_ROOT}/Tests/Shapes/TriangleShapeTest.cpp
 	${SAMPLES_ROOT}/Tests/Shapes/TriangleShapeTest.h
 	${SAMPLES_ROOT}/Tests/Vehicle/MotorcycleTest.cpp
@@ -292,13 +310,52 @@ if (ENABLE_OBJECT_STREAM)
 	)
 endif()
 
+# Assets used by the samples
+set(SAMPLES_ASSETS
+	${PHYSICS_REPO_ROOT}/Assets/convex_hulls.bin
+	${PHYSICS_REPO_ROOT}/Assets/heightfield1.bin
+	${PHYSICS_REPO_ROOT}/Assets/Human/dead_pose1.tof
+	${PHYSICS_REPO_ROOT}/Assets/Human/dead_pose2.tof
+	${PHYSICS_REPO_ROOT}/Assets/Human/dead_pose3.tof
+	${PHYSICS_REPO_ROOT}/Assets/Human/dead_pose4.tof
+	${PHYSICS_REPO_ROOT}/Assets/Human/jog_hd.tof
+	${PHYSICS_REPO_ROOT}/Assets/Human/neutral.tof
+	${PHYSICS_REPO_ROOT}/Assets/Human/neutral_hd.tof
+	${PHYSICS_REPO_ROOT}/Assets/Human/skeleton_hd.tof
+	${PHYSICS_REPO_ROOT}/Assets/Human/sprint.tof
+	${PHYSICS_REPO_ROOT}/Assets/Human/walk.tof
+	${PHYSICS_REPO_ROOT}/Assets/Human.tof
+	${PHYSICS_REPO_ROOT}/Assets/Racetracks/Zandvoort.csv
+	${PHYSICS_REPO_ROOT}/Assets/terrain1.bof
+	${PHYSICS_REPO_ROOT}/Assets/terrain2.bof
+)
+
 # Group source files
 source_group(TREE ${SAMPLES_ROOT} FILES ${SAMPLES_SRC_FILES})
 
 # Create Samples executable
-add_executable(Samples ${SAMPLES_SRC_FILES})
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
+	# Icon
+	set(JPH_ICON "${CMAKE_CURRENT_SOURCE_DIR}/macOS/icon.icns")
+	set_source_files_properties(${JPH_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+
+	# macOS configuration
+	add_executable(Samples MACOSX_BUNDLE ${SAMPLES_SRC_FILES} ${TEST_FRAMEWORK_ASSETS} ${SAMPLES_ASSETS} ${JPH_ICON})
+
+	# Make sure that all samples assets move to the Resources folder in the package
+	foreach(ASSET_FILE ${SAMPLES_ASSETS})
+		string(REPLACE ${PHYSICS_REPO_ROOT}/Assets "Resources" ASSET_DST ${ASSET_FILE})
+		get_filename_component(ASSET_DST ${ASSET_DST} DIRECTORY)
+		set_source_files_properties(${ASSET_FILE} PROPERTIES MACOSX_PACKAGE_LOCATION ${ASSET_DST})
+	endforeach()
+
+	set_property(TARGET Samples PROPERTY MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/iOS/SamplesInfo.plist")
+	set_property(TARGET Samples PROPERTY XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.joltphysics.samples")
+else()
+	add_executable(Samples ${SAMPLES_SRC_FILES})
+endif()
 target_include_directories(Samples PUBLIC ${SAMPLES_ROOT})
-target_link_libraries(Samples LINK_PUBLIC TestFramework d3d12.lib shcore.lib)
+target_link_libraries(Samples LINK_PUBLIC TestFramework)
 
 # Set the correct working directory
 set_property(TARGET Samples PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${PHYSICS_REPO_ROOT}")

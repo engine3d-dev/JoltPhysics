@@ -18,6 +18,7 @@
 #include <Jolt/ObjectStream/ObjectStreamIn.h>
 #include <Application/DebugUI.h>
 #include <Utils/Log.h>
+#include <Utils/AssetStream.h>
 #include <Layers.h>
 
 JPH_IMPLEMENT_RTTI_VIRTUAL(HighSpeedTest)
@@ -147,8 +148,7 @@ void HighSpeedTest::CreateSimpleScene()
 		enclosing_settings.mMotionType = EMotionType::Kinematic;
 		enclosing_settings.mObjectLayer = Layers::MOVING;
 		enclosing_settings.mPosition = offset + Vec3(0, 1, 0);
-		Body &enclosing = *mBodyInterface->CreateBody(enclosing_settings);
-		mBodyInterface->AddBody(enclosing.GetID(), EActivation::Activate);
+		mBodyInterface->CreateAndAddBody(enclosing_settings, EActivation::Activate);
 
 		// Fast moving sphere in box
 		CreateDynamicObject(offset + Vec3(0, 0.5f, 0), Vec3(-speed, 0, -0.5f * speed), new SphereShape(radius));
@@ -331,7 +331,8 @@ void HighSpeedTest::CreateConvexOnTerrain1()
 #ifdef JPH_OBJECT_STREAM
 	// Load scene
 	Ref<PhysicsScene> scene;
-	if (!ObjectStreamIn::sReadObject("Assets/terrain1.bof", scene))
+	AssetStream stream("terrain1.bof", std::ios::in | std::ios::binary);
+	if (!ObjectStreamIn::sReadObject(stream.Get(), scene))
 		FatalError("Failed to load scene");
 	for (BodyCreationSettings &body : scene->GetBodies())
 		body.mObjectLayer = Layers::NON_MOVING;

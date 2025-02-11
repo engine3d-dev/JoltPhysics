@@ -6,6 +6,81 @@ For breaking API changes see [this document](https://github.com/jrouwe/JoltPhysi
 
 ### New functionality
 
+* Optimized creation of `MeshShape`. Improves build speed by about 25% and reduces number of allocations by a factor of 1000. Allocations caused contention when building meshes from multiple threads.
+* Removed the use of `std::unordered_map` and `std::unordered_set` and replaced them with our own implementation: `UnorderedMap` and `UnorderedSet`.
+* Added `MotionProperties::ScaleToMass`. This lets you easily change the mass and inertia tensor of a body after creation.
+* Split up `Body::ApplyBuoyancyImpulse` into `Body::GetSubmergedVolume` and `Body::ApplyBuoyancyImpulse`. This allows you to use the calculated submerged volume for other purposes.
+* Fixed a number of issues when creating very large MeshShapes. MeshShapes of up to 110M triangles are possible now, but the actual maximum is very dependent on how the triangles in the mesh are connected.
+* Added `PhysicsSystem::SetSimShapeFilter`. This allows filtering out collisions between sub shapes within a body and can for example be used to have a single body that contains a low detail simulation shape an a high detail collision query shape.
+* Added an example of a body that's both a sensor and a rigid body in `ContactListenerTest`.
+* Added binary serialization to `SkeletalAnimation`.
+* Added support for RISC-V, LoongArch and PowerPC (Little Endian) CPUs.
+* Added support for WASM64.
+* Added the ability to add a sub shape at a specified index in a `MutableCompoundShape` rather than at the end.
+* The Samples and JoltViewer can run on Linux using Vulkan. Make sure to install the Vulkan SDK before compiling (see: `Build/ubuntu24_install_vulkan_sdk.sh`).
+* The Samples and JoltViewer can run on macOS using Metal.
+* Added `STLLocalAllocator` which is an allocator that can be used in e.g. the Array class. It keeps a fixed size buffer for N elements and only when it runs out of space falls back to the heap.
+* Added support for `CharacterVirtual` to override the inner rigid body ID. This can be used to make the simulation deterministic in e.g. client/server setups.
+* Added `OnContactPersisted`, `OnContactRemoved`, `OnCharacterContactPersisted` and `OnCharacterContactRemoved` functions on `CharacterContactListener` to better match the interface of `ContactListener`.
+* Every `CharacterVirtual` now has a `CharacterID`. This ID can be used to identify the character after removal and is used to make the simulation deterministic in case a character collides with multiple other virtual characters.
+* Added overridable `CollisionCollector::OnBodyEnd` that is called after all hits for a body have been processed when collecting hits through `NarrowPhaseQuery`.
+* Added `ClosestHitPerBodyCollisionCollector` which will report the closest / deepest hit per body that the collision query collides with.
+* Added `PhysicsSystem::SetSimCollideBodyVsBody`. This allows overriding the collision detection between two bodies. It can be used to only store the 1st hit for sensor collisions. This makes sensors cheaper if you only need to know if there is an overlap or not. An example can be found in `SimCollideBodyVsBodyTest`.
+
+### Bug fixes
+
+* Fixed bodies gaining more energy than intended due to restitution. E.g. A restitution of 1 could lead to bodies bouncing ever higher.
+* `std::push_heap`/`pop_heap` behave differently on macOS vs Windows/Linux when elements compare equal, this made the cross platform deterministic build not deterministic in some cases.
+* Added overloads for placement new in the `JPH_OVERRIDE_NEW_DELETE` macro, this means it is no longer needed to do `:: new (address) JPH::class_name(constructor_arguments)` but you can do `new (address) JPH::class_name(constructor_arguments)`.
+* Fixed a GCC warning `-Wshadow=global`.
+* BodyInterface::AddForce applied a force per soft body vertex rather than to the whole body, this resulted in a soft body accelerating much more compared to a rigid body of the same mass.
+* Removing a sub shape from a `MutableCompoundShape` would not update the bounding box if the last shape was removed, which can result in a small performance loss.
+* VehicleConstraint would override `Body::SetAllowSleeping` every frame, making it impossible for client code to configure a vehicle that cannot go to sleep.
+* Fixed `CharacterVirtual::Contact::mIsSensorB` not being persisted in SaveState.
+* Fixed `CharacterVirtual::Contact::mHadContact` not being true for collisions with sensors. They will still be marked as mWasDiscarded to prevent any further interaction.
+* Fixed Character::SetShape failing to switch when standing inside a sensor / Character::PostSimulation finding a sensor as ground collision.
+* Fixed numerical inaccuracy in penetration depth calculation when `CollideShapeSettings::mMaxSeparationDistance` was set to a really high value (e.g. 1000).
+* Bugfix in `Semaphore::Acquire` for non-windows platform. The count was updated before waiting, meaning that the counter would become -(number of waiting threads) and the semaphore would not wake up until at least the same amount of releases was done. In practice this meant that the main thread had to do the last (number of threads) jobs, slowing down the simulation a bit.
+* An empty `MutableCompoundShape` now returns the same local bounding box as `EmptyShape` (a point at (0, 0, 0)). This prevents floating point overflow exceptions.
+* Fixed a bug in ManifoldBetweenTwoFaces that led to incorrect `ContactManifold::mRelativeContactPointsOn2` when the contact normal and the face normal were not roughly parallel. Also it led to possibly jitter in the simulation in that case.
+* Fixed InternalEdgeRemovingCollector not working when colliding with a very dense triangle grid because it ran out of internal space. Now falling back to memory allocations when this happens to avoid ghost collisions.
+* Fixed running out of stack space when simulating a really high number of active rigid bodies.
+
+## v5.2.0
+
+### New functionality
+
+* Added PlaneShape. An infinite plane. Negative half space is considered solid.
+* Added TaperedCylinderShape. A cylinder with different top and bottom radii.
+* Added EmptyShape. A shape that collides with nothing and that can be used as a placeholder or for dummy bodies.
+* Use MeshShapeSettings::mPerTriangleUserData at about 25% memory increase to get per triangle user data through MeshShape::GetTriangleUserData
+* Added `Shape::GetLeafShape` to be able to get a leaf shape given a sub shape ID
+* Added `HeightFieldShape::GetSubShapeCoordinates` to get the triangle coordinates of a particular sub shape ID
+* Split back face mode between convex/triangles for ray casts. This allows you to e.g. have meshes that do give back face hits while convex shapes don't.
+* SoftBodyManifold now returns sensor contacts separately. Before this change, there was a limit of a single colliding body per soft body vertex. If the closest body happened to be a sensor this effectively disabled the collision with the world and caused artifacts. We can now also detect multiple sensor contacts per soft body and they are returned through a new interface `SoftBodyManifold::GetSensorContactBodyID`.
+* Added support for running Jolt with ThreadSanitizer.
+* Added support for using ScaledShape inside CharacterVirtual.
+* Added ability to save/restore a simulation in parts using `StateRecorder::SetIsLastPart`. Also added `StateRecorderFilter::ShouldRestoreContact` to allow selective restoring of contacts.
+* Added `JPH_DEBUG_SYMBOL_FORMAT` cmake option. This allows switching from the default dwarf symbol format to e.g. the source-map format for emscripten, which speeds up compilation.
+
+### Bug fixes
+
+* Fixed an issue where enhanced internal edge removal would throw away valid contacts when a dynamic compound shape is colliding with another mesh / box shape.
+* Fixed an issue where the bounding volume of a HeightFieldShape was not properly adjusted when calling SetHeights leading to missed collisions.
+* Workaround for CMake error `CMake Error: No output files for WriteBuild!` when using the 'Ninja Multi-Config' generator.
+* When a height field was created where SampleCount / BlockSize is not a power of 2 and a soft body touched the right or bottom border of the height field, the application would crash.
+* Fixed a link error `ld: error: undefined symbol: pthread_create` on FreeBSD.
+* Fixed missing files ConfigurationString.h and SoftBodyUpdateContext.h when running `cmake --install`.
+* Fixed various missing header files when running `cmake --install` when `ENABLE_OBJECT_STREAM=OFF`.
+* When using `cmake --install` to install a shared library on Windows, the dll is installed in the 'bin' folder now.
+* Fixed cmake warning: `Policy CMP0177 is not set: install() DESTINATION paths are normalized.`
+* Fixed `unresolved symbol '__emutls_v._ZN3JPH11PhysicsLock6sLocksE'` when compiling Jolt as a shared library with MinGW.
+* Added workaround for issue where Firefox has problems with the `_mm_blendv_ps` intrinsic when compiling to WASM.
+
+## v5.1.0
+
+### New functionality
+
 #### Soft Body
 
 * Added support for applying a global force to a soft body through Body::AddForce.
@@ -26,6 +101,7 @@ For breaking API changes see [this document](https://github.com/jrouwe/JoltPhysi
 
 * Added CharacterBaseSettings::mEnhancedInternalEdgeRemoval (default false) that allows smoother movement for both the Character and CharacterVirtual class.
 * Added ability for a CharacterVirtual to collide with another CharacterVirtual by using the new CharacterVsCharacterCollision interface.
+* Added the option to add an inner rigid body to a CharacterVirtual. This allows it to interact with sensors through the regular ContactListener and to be found by normal collision checks.
 
 #### Vehicles
 
@@ -47,6 +123,7 @@ For breaking API changes see [this document](https://github.com/jrouwe/JoltPhysi
 * Added USE_WASM_SIMD cmake option. This will enable SIMD on the emscripten WASM build.
 * Emscripten WASM build can now be compiled cross platform deterministic and deliver the same results as Windows, Linux etc.
 * Added Shape::MakeScaleValid function. This function will take a scale vector and check it against the scaling rules for the shape. If it is not valid, it will return a scale that is close to the provided scale which is valid.
+* Added cmake options to toggle exception-handling and RTTI. CPP_EXCEPTIONS_ENABLED enables exceptions, CPP_RTTI_ENABLED enables RTTI. By default they're both off as Jolt doesn't use these features. In the PerformanceTest this speeds up the simulation by about 5% for MSVC, no difference was measured for clang.
 
 ### Bug fixes
 
